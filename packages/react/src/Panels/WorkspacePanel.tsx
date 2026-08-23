@@ -105,6 +105,13 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
   const editorConfig = useStore(tutorialStore.editorConfig);
   const storeRef = useStore(tutorialStore.ref);
   const files = useStore(tutorialStore.files);
+  const projectDocuments = useStore(tutorialStore.documents);
+  const workspaceFiles = (tutorialStore as any)._lessonTemplate ?? {};
+  const templateDocuments = collectTemplateDocuments(workspaceFiles);
+  const allFiles = [...files, ...Object.keys(templateDocuments).filter((path) => !projectDocuments?.[path]).map((path) => ({ path, type: 'file' as const }))];
+  const templateDocument = selectedFile && !projectDocuments?.[selectedFile] && templateDocuments[selectedFile]
+    ? { filePath: selectedFile, value: templateDocuments[selectedFile], loading: false, readOnly: true }
+    : undefined;
 
   const lesson = tutorialStore.lesson!;
 
@@ -157,14 +164,18 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
         id={storeRef}
         theme={theme}
         showFileTree={tutorialStore.hasFileTree()}
-        editorDocument={currentDocument}
+        editorDocument={currentDocument ?? templateDocument}
         files={files}
+        allFiles={allFiles}
+        projectDocuments={projectDocuments}
+        workspaceFiles={workspaceFiles}
         i18n={lesson.data.i18n as I18n}
         hideRoot={lesson.data.hideRoot}
         helpAction={helpAction}
         onHelpClick={lessonFullyLoaded ? onHelpClick : undefined}
         onFileSelect={(filePath) => tutorialStore.setSelectedFile(filePath)}
         onFileTreeChange={onFileTreeChange}
+        onDefinition={(filePath) => openDefinition(tutorialStore, projectDocuments, workspaceFiles, filePath)}
         allowEditPatterns={editorConfig.fileTree.allowEdits || undefined}
         selectedFile={selectedFile}
         onEditorScroll={(position) => tutorialStore.setCurrentDocumentScrollPosition(position)}
@@ -172,6 +183,47 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
       />
     </Panel>
   );
+}
+
+function collectTemplateDocuments(source: any, base = '', result: Record<string, string> = {}) {
+  if (!source) return result;
+  const entries = source instanceof Map ? [...source.entries()] : Array.isArray(source) ? source.map((value, index) => [String(index), value]) : typeof source === 'object' ? Object.entries(source) : [];
+  for (const [name, value] of entries as [string, any][]) {
+    const path = value?.filePath ?? value?.path ?? (base ? `${base}/${name}` : name);
+    const content = typeof value === 'string' ? value : value?.value ?? value?.content;
+    if (typeof content === 'string' && !path.split('/').includes('challenges')) result[path] = content;
+    else if (value && typeof value === 'object') collectTemplateDocuments(value, path, result);
+  }
+  return result;
+}
+
+function openDefinition(tutorialStore: TutorialStore, documents: any, workspace: any, filePath: string) {
+  if (documents?.[filePath]) {
+    tutorialStore.setSelectedFile(filePath);
+    return;
+  }
+  const content = findWorkspaceFile(workspace, filePath);
+  if (typeof content !== 'string') return;
+  // Inherited template files are intentionally absent from the editable document map.
+  // Materialize the target only when navigation asks for it.
+  const editorStore = (tutorialStore as any)._editorStore;
+  editorStore?.addFileOrFolder({ path: filePath, type: 'file' });
+  editorStore?.updateFile(filePath, content);
+  tutorialStore.setSelectedFile(filePath);
+}
+function findWorkspaceFile(source: any, target: string, base = ''): string | undefined {
+  if (!source) return undefined;
+  const entries = source instanceof Map ? [...source.entries()] : Array.isArray(source) ? source.map((value, index) => [String(index), value]) : typeof source === 'object' ? Object.entries(source) : [];
+  for (const [name, value] of entries as [string, any][]) {
+    const path = value?.filePath ?? value?.path ?? (base ? `${base}/${name}` : name);
+    const content = typeof value === 'string' ? value : value?.value ?? value?.content;
+    if (path === target && typeof content === 'string') return content;
+    if (value && typeof value === 'object') {
+      const found = findWorkspaceFile(value, target, path);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
 }
 
 function PreviewsSection({

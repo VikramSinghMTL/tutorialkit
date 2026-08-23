@@ -98,3 +98,7 @@ html[data-theme='dark'] {
   --tk-elements-editor-activeLineBackgroundColor: rgb(50 53 63 / 50%);
   --tk-elements-editor-foldGutter-textColorHover: var(--tk-text-primary);
 }
+
+.tk-show-all-files { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.75rem; color: var(--tk-text-secondary); font-size: 0.75rem; cursor: pointer; }
+.tk-show-all-files input { accent-color: var(--tk-elements-panel-headerButton-iconColorHover); }
+.tk-readonly-badge { margin-left: 0.5rem; padding: 0.1rem 0.4rem; border: 1px solid var(--tk-elements-app-borderColor); border-radius: 999px; color: var(--tk-text-secondary); font-size: 0.7rem; line-height: 1; }

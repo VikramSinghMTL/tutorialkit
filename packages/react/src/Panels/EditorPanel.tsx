@@ -1,5 +1,5 @@
 import type { I18n } from '@tutorialkit/types';
-import { useEffect, useRef, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import {
   CodeMirrorEditor,
@@ -18,6 +18,9 @@ interface Props {
   theme: Theme;
   id: unknown;
   files: ComponentProps<typeof FileTree>['files'];
+  allFiles?: ComponentProps<typeof FileTree>['files'];
+  projectDocuments?: Record<string, { value: string | Uint8Array } | undefined> | Map<string, { value: string | Uint8Array }>;
+  workspaceFiles?: unknown;
   i18n: I18n;
   hideRoot?: boolean;
   fileTreeScope?: string;
@@ -31,12 +34,16 @@ interface Props {
   onHelpClick?: () => void;
   onFileSelect?: (value?: string) => void;
   onFileTreeChange?: ComponentProps<typeof FileTree>['onFileChange'];
+  onDefinition?: (filePath: string) => void;
 }
 
 export function EditorPanel({
   theme,
   id,
   files,
+  allFiles,
+  projectDocuments,
+  workspaceFiles,
   i18n,
   hideRoot,
   fileTreeScope,
@@ -50,8 +57,10 @@ export function EditorPanel({
   onHelpClick,
   onFileSelect,
   onFileTreeChange,
+  onDefinition,
 }: Props) {
   const fileTreePanelRef = useRef<ImperativePanelHandle>(null);
+  const [showAllFiles, setShowAllFiles] = useState(false);
 
   useEffect(() => {
     const { current: fileTreePanel } = fileTreePanelRef;
@@ -78,12 +87,13 @@ export function EditorPanel({
             <span className="text-sm">{i18n.filesTitleText}</span>
           </div>
         </div>
+        {!!allFiles && <label className="tk-show-all-files border-r border-b border-tk-elements-app-borderColor"><input type="checkbox" checked={showAllFiles} onChange={(event) => setShowAllFiles(event.target.checked)} /> Show all files</label>}
         <FileTree
           className="flex flex-col flex-grow py-2 border-r border-tk-elements-app-borderColor text-sm overflow-y-auto overflow-x-hidden"
           i18n={i18n}
           selectedFile={selectedFile}
           hideRoot={hideRoot ?? true}
-          files={files}
+          files={showAllFiles ? allFiles ?? files : files}
           scope={fileTreeScope}
           allowEditPatterns={allowEditPatterns}
           onFileSelect={onFileSelect}
@@ -103,6 +113,10 @@ export function EditorPanel({
             theme={theme}
             id={id}
             doc={editorDocument}
+            projectDocuments={projectDocuments}
+            workspaceFiles={workspaceFiles}
+            projectFiles={files}
+            onDefinition={onDefinition}
             autoFocusOnDocumentChange={!isMobile()}
             onScroll={onEditorScroll}
             onChange={onEditorChange}
@@ -130,6 +144,7 @@ function FileTab({ i18n, editorDocument, helpAction, onHelpClick }: FileTabProps
       <div className="panel-title">
         <div className={`panel-icon scale-125 ${icon}`}></div>
         <span className="text-sm">{fileName}</span>
+        {editorDocument?.readOnly && <span className="tk-readonly-badge">Read-only</span>}
       </div>
       {!!helpAction && (
         <button onClick={onHelpClick} disabled={!onHelpClick} className="panel-button px-2 py-0.5 -mr-1 -my-1">
