@@ -2,6 +2,35 @@ import { createDefaultMapFromCDN, createSystem, createVirtualTypeScriptEnvironme
 import ts from 'typescript';
 
 let libraries: Promise<Map<string, string>> | undefined;
+let clearedLegacyLibraryCache = false;
+
+function clearLegacyLibraryCache(): void {
+  if (clearedLegacyLibraryCache) return;
+  clearedLegacyLibraryCache = true;
+
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith('ts-lib-')) localStorage.removeItem(key);
+  }
+}
+
+// @typescript/vfs includes a few historical/future aliases that do not exist
+// in TypeScript 5.6's CDN directory. Avoid issuing those known 404 requests.
+const unavailableTypeScriptLibraries = new Set([
+  'lib.core.d.ts',
+  'lib.core.es6.d.ts',
+  'lib.core.es7.d.ts',
+  'lib.es7.d.ts',
+  'lib.es2017.arraybuffer.d.ts',
+]);
+
+const fetchTypeScriptLibrary = async (url: string) => {
+  const filename = url.split('/').at(-1);
+  if (filename && unavailableTypeScriptLibraries.has(filename)) {
+    return { json: async () => ({}), text: async () => '' };
+  }
+  return fetch(url);
+};
+
 export function updateTypeScriptProject(projectRef: { current: any }, documents: unknown, templates: unknown, files: unknown, active: { filePath: string; value: string }) {
   if (projectRef.current?.languageService) {
     const path = virtualPath(active.filePath);
@@ -10,7 +39,17 @@ export function updateTypeScriptProject(projectRef: { current: any }, documents:
   }
   const snapshot = { documents, templates, files, active };
   projectRef.current = snapshot;
-  libraries ??= createDefaultMapFromCDN({ target: ts.ScriptTarget.ES2020, lib: ['lib.es2020.full.d.ts'] }, ts.version, true, ts);
+  clearLegacyLibraryCache();
+  // Keep TypeScript library files for this tab, without polluting site-wide localStorage.
+  libraries ??= createDefaultMapFromCDN(
+    { target: ts.ScriptTarget.ES2020, lib: ['lib.es2020.full.d.ts'] },
+    ts.version,
+    true,
+    ts,
+    undefined,
+    fetchTypeScriptLibrary,
+    sessionStorage,
+  );
   libraries.then((libs) => {
     if (projectRef.current !== snapshot) return;
     const map = new Map(libs);

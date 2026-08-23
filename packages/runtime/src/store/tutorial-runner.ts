@@ -458,10 +458,11 @@ export class TutorialRunner {
 
       for (const [index, command] of commandList.entries()) {
         const isMainCommand = index === commandList.length - 1 && !!commands.mainCommand;
+        const title = command.pickTitle();
 
         if (!command.isRunnable()) {
           this._stepController.updateStep(index, {
-            title: command.title,
+            title,
             status: 'skipped',
           });
 
@@ -469,7 +470,7 @@ export class TutorialRunner {
         }
 
         this._stepController.updateStep(index, {
-          title: command.title,
+          title,
           status: 'running',
         });
 
@@ -500,7 +501,7 @@ export class TutorialRunner {
 
         if (exitCode !== 0) {
           this._stepController.updateStep(index, {
-            title: command.title,
+            title,
             status: 'failed',
           });
 
@@ -515,7 +516,7 @@ export class TutorialRunner {
           break;
         } else {
           this._stepController.updateStep(index, {
-            title: command.title,
+            title,
             status: 'completed',
           });
         }

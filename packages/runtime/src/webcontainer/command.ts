@@ -38,14 +38,21 @@ export class Command {
    */
   readonly shellCommand: string;
 
-  /**
-   * Title describing what this command does, e.g., "Installing dependencies".
-   */
+  /** Titles describing what this command does, e.g., "Installing dependencies". */
+  readonly titles: readonly string[];
+
+  /** A deterministic initial title so server and client hydration agree. */
   readonly title: string;
 
   constructor(command: CommandSchema) {
     this.shellCommand = Command.toShellCommand(command);
-    this.title = Command.toTitle(command);
+    this.titles = Command.toTitles(command);
+    this.title = this.titles[0] ?? '';
+  }
+
+  /** Choose a playful label only when the client starts the command. */
+  pickTitle(): string {
+    return this.titles[Math.floor(Math.random() * this.titles.length)] ?? this.title;
   }
 
   isRunnable() {
@@ -56,15 +63,13 @@ export class Command {
     return a.shellCommand === b.shellCommand;
   }
 
-  static toTitle(command: CommandSchema): string {
+  static toTitles(command: CommandSchema): string[] {
     const title = typeof command === 'string' ? command : Array.isArray(command) ? command[1] : command.title;
+    return typeof title === 'string' ? [title] : title;
+  }
 
-    if (typeof title === 'string') {
-      return title;
-    }
-
-    // Choose once while the command is created so its label stays stable for this preview run.
-    return title[Math.floor(Math.random() * title.length)] ?? '';
+  static toTitle(command: CommandSchema): string {
+    return Command.toTitles(command)[0] ?? '';
   }
 
   static toShellCommand(command: CommandSchema) {

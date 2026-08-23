@@ -75,9 +75,10 @@ describe('Command', () => {
     expect(command.title).toBe('Installing dependencies');
   });
 
-  it('should choose one title from a title list', () => {
+  it('should use a deterministic initial title and choose from a title list when run', () => {
     const command = new Command({ command: 'npm install', title: ['Casting spells', 'Summoning sprites'] });
-    expect(['Casting spells', 'Summoning sprites']).toContain(command.title);
+    expect(command.title).toBe('Casting spells');
+    expect(['Casting spells', 'Summoning sprites']).toContain(command.pickTitle());
   });
 
   it('should convert command to shell command', () => {

@@ -126,6 +126,10 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
   const lesson = tutorialStore.lesson!;
 
   function onHelpClick() {
+    // Keep the button's server/client markup stable; clicks during file loading
+    // are harmlessly ignored until the workspace is ready.
+    if (!lessonFullyLoaded) return;
+
     if (tutorialStore.hasSolution()) {
       setHelpAction((action) => {
         if (action === 'reset') {
@@ -182,7 +186,7 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
         i18n={lesson.data.i18n as I18n}
         hideRoot={lesson.data.hideRoot}
         helpAction={helpAction}
-        onHelpClick={lessonFullyLoaded ? onHelpClick : undefined}
+        onHelpClick={onHelpClick}
         onFileSelect={(filePath) => tutorialStore.setSelectedFile(filePath)}
         onFileTreeChange={onFileTreeChange}
         onDefinition={(filePath) => openDefinition(tutorialStore, projectDocuments, workspaceFiles, filePath)}
