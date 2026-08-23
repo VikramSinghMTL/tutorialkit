@@ -56,18 +56,15 @@ export class Command {
     return a.shellCommand === b.shellCommand;
   }
 
-  static toTitle(command: CommandSchema) {
-    let title = '';
+  static toTitle(command: CommandSchema): string {
+    const title = typeof command === 'string' ? command : Array.isArray(command) ? command[1] : command.title;
 
-    if (typeof command === 'string') {
-      title = command;
-    } else if (Array.isArray(command)) {
-      title = command[1];
-    } else {
-      title = command.title;
+    if (typeof title === 'string') {
+      return title;
     }
 
-    return title;
+    // Choose once while the command is created so its label stays stable for this preview run.
+    return title[Math.floor(Math.random() * title.length)] ?? '';
   }
 
   static toShellCommand(command: CommandSchema) {

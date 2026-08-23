@@ -2,16 +2,21 @@ import { z } from 'zod';
 import { i18nSchema } from './i18n.js';
 import { metaTagsSchema } from './metatags.js';
 
+const commandTitleSchema = z.union([
+  z.string(),
+  z.array(z.string()).min(1),
+]);
+
 export const commandSchema = z.union([
   // a single string, the command to run
   z.string(),
 
-  // a tuple of two strings, the command followed by a title
-  z.tuple([z.string(), z.string()]),
+  // a tuple of a command and one title or a randomized title list
+  z.tuple([z.string(), commandTitleSchema]),
 
   z.strictObject({
     command: z.string().describe('Command to execute in WebContainer.'),
-    title: z.string().describe('Title to show for this step in the Prepare Environment section.'),
+    title: commandTitleSchema.describe('Title, or titles to randomly choose from, for this step in the Prepare Environment section.'),
   }),
 ]);
 

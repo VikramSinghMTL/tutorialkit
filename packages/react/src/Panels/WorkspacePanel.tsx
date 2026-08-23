@@ -108,9 +108,19 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
   const projectDocuments = useStore(tutorialStore.documents);
   const workspaceFiles = (tutorialStore as any)._lessonTemplate ?? {};
   const templateDocuments = collectTemplateDocuments(workspaceFiles);
-  const allFiles = [...files, ...Object.keys(templateDocuments).filter((path) => !projectDocuments?.[path]).map((path) => ({ path, type: 'file' as const }))];
-  const templateDocument = selectedFile && !projectDocuments?.[selectedFile] && templateDocuments[selectedFile]
-    ? { filePath: selectedFile, value: templateDocuments[selectedFile], loading: false, readOnly: true }
+  const templateFiles = collectTemplateFilePaths(workspaceFiles);
+  const allFiles = [
+    ...files,
+    ...templateFiles
+      .filter((path) => !projectDocuments?.[path])
+      .map((path) => ({ path, type: 'file' as const })),
+  ];
+  const templateDocument = selectedFile && !projectDocuments?.[selectedFile]
+    ? templateDocuments[selectedFile]
+      ? { filePath: selectedFile, value: templateDocuments[selectedFile], loading: false, readOnly: true }
+      : templateFiles.includes(selectedFile)
+        ? { filePath: selectedFile, value: new Uint8Array(), loading: false, readOnly: true }
+        : undefined
     : undefined;
 
   const lesson = tutorialStore.lesson!;
@@ -186,13 +196,36 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
 }
 
 function collectTemplateDocuments(source: any, base = '', result: Record<string, string> = {}) {
-  if (!source) return result;
+  // Template audio/images belong in the preview workspace, not the editor file list.
+  if (!source || source instanceof Uint8Array) return result;
   const entries = source instanceof Map ? [...source.entries()] : Array.isArray(source) ? source.map((value, index) => [String(index), value]) : typeof source === 'object' ? Object.entries(source) : [];
   for (const [name, value] of entries as [string, any][]) {
+    if (value instanceof Uint8Array) continue;
+
     const path = value?.filePath ?? value?.path ?? (base ? `${base}/${name}` : name);
     const content = typeof value === 'string' ? value : value?.value ?? value?.content;
     if (typeof content === 'string' && !path.split('/').includes('challenges')) result[path] = content;
     else if (value && typeof value === 'object') collectTemplateDocuments(value, path, result);
+  }
+  return result;
+}
+
+function collectTemplateFilePaths(source: any, base = '', result: string[] = []): string[] {
+  if (!source) return result;
+  if (source instanceof Uint8Array) {
+    if (!base.split('/').includes('challenges')) result.push(base);
+    return result;
+  }
+
+  const entries = source instanceof Map ? [...source.entries()] : Array.isArray(source) ? source.map((value, index) => [String(index), value]) : typeof source === 'object' ? Object.entries(source) : [];
+  for (const [name, value] of entries as [string, any][]) {
+    const path = value?.filePath ?? value?.path ?? (base ? `${base}/${name}` : name);
+    const content = typeof value === 'string' ? value : value?.value ?? value?.content;
+    if (value instanceof Uint8Array || typeof content === 'string') {
+      if (!path.split('/').includes('challenges')) result.push(path);
+    } else if (value && typeof value === 'object') {
+      collectTemplateFilePaths(value, path, result);
+    }
   }
   return result;
 }
@@ -212,9 +245,11 @@ function openDefinition(tutorialStore: TutorialStore, documents: any, workspace:
   tutorialStore.setSelectedFile(filePath);
 }
 function findWorkspaceFile(source: any, target: string, base = ''): string | undefined {
-  if (!source) return undefined;
+  if (!source || source instanceof Uint8Array) return undefined;
   const entries = source instanceof Map ? [...source.entries()] : Array.isArray(source) ? source.map((value, index) => [String(index), value]) : typeof source === 'object' ? Object.entries(source) : [];
   for (const [name, value] of entries as [string, any][]) {
+    if (value instanceof Uint8Array) continue;
+
     const path = value?.filePath ?? value?.path ?? (base ? `${base}/${name}` : name);
     const content = typeof value === 'string' ? value : value?.value ?? value?.content;
     if (path === target && typeof content === 'string') return content;

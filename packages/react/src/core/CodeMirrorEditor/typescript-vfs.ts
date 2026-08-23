@@ -97,7 +97,13 @@ export function typeScriptDiagnostics(projectRef: { current: any }, filePath: st
     } catch { return []; }
   };
 }
-export function workspaceKey(...values: unknown[]) { return values.map((value) => JSON.stringify(value)).join('|'); }
+/** Build a dependency key from TypeScript sources only; binary game assets can be megabytes. */
+export function workspaceKey(...values: unknown[]) {
+  return collect(...values)
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((file) => `${file.path}:${file.content}`)
+    .join('|');
+}
 function virtualPath(path: string) { return path.startsWith('/') ? path : `/${path}`; }
 function collect(...sources: unknown[]) {
   const result = new Map<string, string>();
@@ -105,6 +111,10 @@ function collect(...sources: unknown[]) {
     if (!source) return;
     const entries = source instanceof Map ? [...source.entries()] : Array.isArray(source) ? source.map((value, index) => [String(index), value]) : typeof source === 'object' ? Object.entries(source) : [];
     for (const [name, value] of entries as [string, any][]) {
+      // Assets are retained for the preview, but they are irrelevant to TypeScript
+      // and must never be enumerated byte-by-byte while the editor is rendering.
+      if (value instanceof Uint8Array) continue;
+
       const path = value?.filePath ?? value?.path ?? (base ? `${base}/${name}` : name);
       const content = typeof value === 'string' ? value : value?.value ?? value?.content;
       if (/\.tsx?$/i.test(path) && typeof content === 'string') result.set(path, content);

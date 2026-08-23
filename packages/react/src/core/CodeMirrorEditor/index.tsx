@@ -177,10 +177,12 @@ export function CodeMirrorEditor({
 
   useEffect(() => {
     if (!doc || doc.value instanceof Uint8Array || !/\.tsx?$/i.test(doc.filePath)) return;
+    // Rebuild only when the workspace changes. Recreating the TypeScript service
+    // for every editor tab switch is expensive, especially in asset-heavy lessons.
     typeScriptProjectRef.current?.languageService?.dispose();
     typeScriptProjectRef.current = undefined;
     updateTypeScriptProject(typeScriptProjectRef, projectDocuments, workspaceFiles, projectFiles, doc as TextEditorDocument);
-  }, [id, doc?.filePath, workspaceKey(projectDocuments, workspaceFiles)]);
+  }, [id, workspaceKey(projectDocuments, workspaceFiles)]);
 
   useEffect(() => {
     const editorStates = editorStatesRef.current!;
