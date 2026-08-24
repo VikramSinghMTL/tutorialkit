@@ -41,4 +41,5 @@ async function onClick() {
 
   document.body.removeChild(link);
   URL.revokeObjectURL(link.href);
+  window.dispatchEvent(new Event('tutorialkit:download-complete'));
 }

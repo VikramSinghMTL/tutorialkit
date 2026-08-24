@@ -134,16 +134,19 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
       setHelpAction((action) => {
         if (action === 'reset') {
           tutorialStore.reset();
+          window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
 
           return 'solve';
         } else {
           tutorialStore.solve();
+          window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
 
           return 'reset';
         }
       });
     } else {
       tutorialStore.reset();
+      window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
     }
   }
 
@@ -193,7 +196,15 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
         allowEditPatterns={editorConfig.fileTree.allowEdits || undefined}
         selectedFile={selectedFile}
         onEditorScroll={(position) => tutorialStore.setCurrentDocumentScrollPosition(position)}
-        onEditorChange={(update) => tutorialStore.setCurrentDocumentContent(update.content)}
+        onEditorChange={(update) => {
+          // CodeMirror also reports selection-only updates. Only notify consumers when
+          // the document content itself has changed.
+          if (tutorialStore.currentDocument.get()?.value !== update.content) {
+            window.dispatchEvent(new Event('tutorialkit:editor-content-changed'));
+          }
+
+          tutorialStore.setCurrentDocumentContent(update.content);
+        }}
       />
     </Panel>
   );
