@@ -23,6 +23,44 @@ const unavailableTypeScriptLibraries = new Set([
   'lib.es2017.arraybuffer.d.ts',
 ]);
 
+const SOURCE_FILE = /\.[jt]sx?$/i;
+const CONFIG_FILE = /(^|\/)(jsconfig|tsconfig)\.json$/i;
+
+// The editor fetches its own library files, so target and lib stay fixed
+// whatever the project's config asks for.
+const fixedCompilerOptions: ts.CompilerOptions = {
+  target: ts.ScriptTarget.ES2020,
+  lib: ['lib.es2020.full.d.ts'],
+};
+
+const defaultCompilerOptions: ts.CompilerOptions = {
+  module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeJs,
+  jsx: ts.JsxEmit.ReactJSX,
+  allowJs: true,
+  checkJs: true,
+};
+
+/**
+ * Reads compilerOptions (paths, checkJs, noImplicitAny, ...) from the root
+ * jsconfig.json or tsconfig.json, so the editor resolves import aliases and
+ * checks the same way the project's own type checker does.
+ */
+function projectCompilerOptions(...sources: unknown[]): ts.CompilerOptions {
+  const config = collect(CONFIG_FILE, ...sources).sort((a, b) => a.path.length - b.path.length)[0];
+  let options: ts.CompilerOptions = {};
+
+  if (config) {
+    const { config: json } = ts.parseConfigFileTextToJson(config.path, config.content);
+    options = ts.convertCompilerOptionsFromJson(json?.compilerOptions ?? {}, '/').options;
+  }
+
+  // paths resolve against baseUrl; without one, use the project root.
+  if (options.paths && !options.baseUrl) options.baseUrl = '/';
+
+  return { ...defaultCompilerOptions, ...options, ...fixedCompilerOptions };
+}
+
 const fetchTypeScriptLibrary = async (url: string) => {
   const filename = url.split('/').at(-1);
   if (filename && unavailableTypeScriptLibraries.has(filename)) {
@@ -53,9 +91,9 @@ export function updateTypeScriptProject(projectRef: { current: any }, documents:
   libraries.then((libs) => {
     if (projectRef.current !== snapshot) return;
     const map = new Map(libs);
-    for (const file of collect(templates, files, documents)) map.set(virtualPath(file.path), file.content);
+    for (const file of collect(SOURCE_FILE, templates, files, documents)) map.set(virtualPath(file.path), file.content);
     map.set(virtualPath(active.filePath), active.value);
-    projectRef.current = createVirtualTypeScriptEnvironment(createSystem(map), [...map.keys()].filter((path) => /\.tsx?$/i.test(path)), ts, { target: ts.ScriptTarget.ES2020, lib: ['lib.es2020.full.d.ts'], module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.NodeJs, jsx: ts.JsxEmit.ReactJSX });
+    projectRef.current = createVirtualTypeScriptEnvironment(createSystem(map), [...map.keys()].filter((path) => SOURCE_FILE.test(path)), ts, projectCompilerOptions(templates, files, documents));
   }).catch(() => { if (projectRef.current === snapshot) projectRef.current = undefined; });
 }
 export function typeScriptCompletion(projectRef: { current: any }, filePath: string) {
@@ -136,15 +174,15 @@ export function typeScriptDiagnostics(projectRef: { current: any }, filePath: st
     } catch { return []; }
   };
 }
-/** Build a dependency key from TypeScript sources only; binary game assets can be megabytes. */
+/** Build a dependency key from source and config files only; binary game assets can be megabytes. */
 export function workspaceKey(...values: unknown[]) {
-  return collect(...values)
+  return [...collect(SOURCE_FILE, ...values), ...collect(CONFIG_FILE, ...values)]
     .sort((a, b) => a.path.localeCompare(b.path))
     .map((file) => `${file.path}:${file.content}`)
     .join('|');
 }
 function virtualPath(path: string) { return path.startsWith('/') ? path : `/${path}`; }
-function collect(...sources: unknown[]) {
+function collect(pattern: RegExp, ...sources: unknown[]) {
   const result = new Map<string, string>();
   const walk = (source: any, base = '') => {
     if (!source) return;
@@ -156,7 +194,7 @@ function collect(...sources: unknown[]) {
 
       const path = value?.filePath ?? value?.path ?? (base ? `${base}/${name}` : name);
       const content = typeof value === 'string' ? value : value?.value ?? value?.content;
-      if (/\.tsx?$/i.test(path) && typeof content === 'string') result.set(path, content);
+      if (pattern.test(path) && typeof content === 'string') result.set(path, content);
       else if (value && typeof value === 'object') walk(value, path);
     }
   };
