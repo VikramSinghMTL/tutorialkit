@@ -118,6 +118,13 @@ export function clearConsole() {
 }
 
 /**
+ * @returns Whether two locations are the same line of the same file, or both missing.
+ */
+function sameLocation(a: SourceLocation | undefined, b: SourceLocation | undefined) {
+  return a?.filePath === b?.filePath && a?.line === b?.line;
+}
+
+/**
  * Adds a message to the Console tab, or bumps the count of the last row when it's the same message again.
  *
  * @param data The message's payload.
@@ -139,8 +146,10 @@ function addConsoleEntry(data: { level?: unknown; args?: unknown; stack?: unknow
     last &&
     last.level === level &&
     last.text === text &&
-    frames.map((frame) => frame.text).join('\n') === last.frames.map((frame) => frame.text).join('\n')
+    sameLocation(location, last.location)
   ) {
+    // The same line logging again, even from a different caller (the first frame starts from Game.start), is
+    // one row. An error keeps the stack it first had.
     consoleEntries.set([...entries.slice(0, -1), { ...last, count: last.count + count }]);
     return;
   }
