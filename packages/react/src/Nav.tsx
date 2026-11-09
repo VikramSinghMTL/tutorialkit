@@ -166,7 +166,7 @@ function NavListItem({ level, type, index, i18n, activeItems, id, title, href, s
           })}
         >
           <span className={`${navStyles.AccordionTriggerIcon} i-ph-caret-right-bold scale-80 text-gray-300`}></span>
-          <span>{type === 'part' ? interpolateString(i18n!.partTemplate!, { index: index + 1, title }) : title}</span>
+          <span>{type === 'part' ? interpolateString(i18n!.partTemplate!, { index, title }) : title}</span>
         </Accordion.Trigger>
 
         <Accordion.Content className={navStyles.AccordionContent}>

@@ -24,7 +24,7 @@ export function BootScreen({ className, tutorialStore }: Props) {
     <div className={classNames('flex-grow w-full flex justify-center items-center text-sm', className)}>
       {isClient && bootStatus === 'blocked' ? (
         <Button onClick={() => tutorialStore.unblockBoot()}>{startWebContainerText}</Button>
-      ) : steps ? (
+      ) : isClient && steps ? (
         <ul className="space-y-1">
           {steps.map((step, index) => (
             <li key={index} className="flex items-center">
@@ -44,7 +44,7 @@ export function BootScreen({ className, tutorialStore }: Props) {
           ))}
         </ul>
       ) : (
-        noPreviewNorStepsText
+        isClient ? noPreviewNorStepsText : null
       )}
     </div>
   );

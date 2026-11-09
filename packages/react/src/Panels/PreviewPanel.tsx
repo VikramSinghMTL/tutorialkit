@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react';
 import type { PreviewInfo, TutorialStore } from '@tutorialkit/runtime';
 import type { I18n } from '@tutorialkit/types';
 import { reloadPreview } from '@webcontainer/api/utils';
-import { createElement, forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
+import { createElement, forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { BootScreen } from '../BootScreen.js';
 import resizePanelStyles from '../styles/resize-panel.module.css';
@@ -17,6 +17,22 @@ interface Props {
 
 const previewsContainer = globalThis.document ? document.getElementById('previews-container')! : ({} as HTMLElement);
 
+const MUTE_STORAGE_KEY = 'tk-preview-muted';
+const MUTE_MESSAGE = 'tutorial:mute';
+const MUTE_READY_MESSAGE = 'tutorial:mute-ready';
+
+function readMuted() {
+  try {
+    return localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function sendMuted(target: MessageEventSource | Window | null | undefined, muted: boolean) {
+  (target as Window | null | undefined)?.postMessage({ type: MUTE_MESSAGE, muted }, '*');
+}
+
 type IFrameRef = { ref: HTMLIFrameElement | undefined; container: HTMLElement | undefined };
 
 export type ImperativePreviewHandle = {
@@ -27,6 +43,44 @@ export const PreviewPanel = memo(
   forwardRef<ImperativePreviewHandle, Props>(({ showToggleTerminal, toggleTerminal, i18n, tutorialStore }, ref) => {
     const expectedPreviews = useStore(tutorialStore.previews);
     const iframeRefs = useRef<IFrameRef[]>([]);
+    const [muted, setMuted] = useState(readMuted);
+    const mutedRef = useRef(muted);
+    mutedRef.current = muted;
+
+    const toggleMuted = useCallback(() => {
+      const nowMuted = !mutedRef.current;
+      mutedRef.current = nowMuted;
+      setMuted(nowMuted);
+
+      try {
+        localStorage.setItem(MUTE_STORAGE_KEY, String(nowMuted));
+      } catch {
+        // the choice just won't persist across visits
+      }
+
+      for (const iframe of iframeRefs.current) {
+        sendMuted(iframe.ref?.contentWindow, nowMuted);
+      }
+    }, []);
+
+    useEffect(() => {
+      // a preview announces itself each time it loads, so it gets the current mute state
+      const onMessage = (event: MessageEvent) => {
+        if (event.data?.type !== MUTE_READY_MESSAGE) {
+          return;
+        }
+
+        const fromPreview = iframeRefs.current.some((iframe) => iframe.ref?.contentWindow === event.source);
+
+        if (fromPreview) {
+          sendMuted(event.source, mutedRef.current);
+        }
+      };
+
+      window.addEventListener('message', onMessage);
+
+      return () => window.removeEventListener('message', onMessage);
+    }, []);
 
     const onResize = useCallback(() => {
       for (const { ref, container } of iframeRefs.current) {
@@ -126,6 +180,9 @@ export const PreviewPanel = memo(
             last={index === previews.length - 1}
             toggleTerminal={toggleTerminal}
             i18n={i18n}
+            tutorialStore={tutorialStore}
+            muted={muted}
+            toggleMuted={toggleMuted}
           />
         </Panel>,
       );
@@ -148,25 +205,48 @@ interface PreviewProps {
   last?: boolean;
   toggleTerminal?: () => void;
   i18n: I18n;
+  tutorialStore: TutorialStore;
+  muted: boolean;
+  toggleMuted: () => void;
 }
 
-function Preview({ preview, iframe, previewCount, first, last, toggleTerminal, i18n }: PreviewProps) {
+function Preview({
+  preview,
+  iframe,
+  previewCount,
+  first,
+  last,
+  toggleTerminal,
+  i18n,
+  tutorialStore,
+  muted,
+  toggleMuted,
+}: PreviewProps) {
   const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
 
   useEffect(() => {
     if (!iframe.ref) {
-      return;
+      return undefined;
     }
 
     iframe.container = previewContainerRef.current!;
 
+    const frame = iframe.ref;
+    const onLoad = () => setPreviewLoaded(true);
+
+    setPreviewLoaded(false);
+    frame.addEventListener('load', onLoad);
+
     if (preview.url) {
-      iframe.ref.src = preview.url;
+      frame.src = preview.url;
     }
 
     if (preview.title) {
-      iframe.ref.title = preview.title;
+      frame.title = preview.title;
     }
+
+    return () => frame.removeEventListener('load', onLoad);
   }, [preview.url, iframe.ref]);
 
   function reload() {
@@ -176,7 +256,7 @@ function Preview({ preview, iframe, previewCount, first, last, toggleTerminal, i
   }
 
   return (
-    <div className="panel-container">
+    <div className="panel-container bg-tk-elements-panel-backgroundColor">
       <div
         className={classNames('panel-header border-b border-tk-elements-app-borderColor justify-between', {
           'border-l border-tk-elements-app-borderColor': !first,
@@ -189,6 +269,15 @@ function Preview({ preview, iframe, previewCount, first, last, toggleTerminal, i
             className="panel-button rounded-full p-1.5 -my-1.5 -ml-2"
           >
             <div className="panel-icon i-ph-arrow-clockwise"></div>
+          </button>
+          <button
+            onClick={toggleMuted}
+            title={muted ? 'Unmute preview' : 'Mute preview'}
+            aria-label={muted ? 'Unmute preview' : 'Mute preview'}
+            aria-pressed={muted}
+            className="panel-button rounded-full p-1.5 -my-1.5"
+          >
+            <div className={muted ? 'panel-icon i-ph-speaker-slash' : 'panel-icon i-ph-speaker-high'}></div>
           </button>
           <span className="text-sm truncate">{previewTitle(preview, previewCount, i18n)}</span>
         </div>
@@ -205,10 +294,15 @@ function Preview({ preview, iframe, previewCount, first, last, toggleTerminal, i
       </div>
       <div
         ref={previewContainerRef}
-        className={classNames('h-full w-full flex justify-center items-center', {
-          'border-l border-tk-elements-previews-borderColor': !first,
-        })}
-      />
+        className={classNames(
+          'relative z-20 h-full w-full flex justify-center items-center bg-tk-elements-panel-backgroundColor',
+          {
+            'border-l border-tk-elements-previews-borderColor': !first,
+          },
+        )}
+      >
+        {!previewLoaded && <BootScreen className="absolute inset-0 z-20" tutorialStore={tutorialStore} />}
+      </div>
     </div>
   );
 }

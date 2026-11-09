@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react';
 import type { TutorialStore } from '@tutorialkit/runtime';
 import type { I18n } from '@tutorialkit/types';
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
-import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { DialogProvider } from '../core/Dialog.js';
 import type { Theme } from '../core/types.js';
 import resizePanelStyles from '../styles/resize-panel.module.css';
@@ -12,6 +12,16 @@ import { PreviewPanel, type ImperativePreviewHandle } from './PreviewPanel.js';
 import { TerminalPanel } from './TerminalPanel.js';
 
 const DEFAULT_TERMINAL_SIZE = 25;
+
+// course patch: the editor and preview can shrink to a strip this tall
+const MIN_SIZE_IN_PIXELS = 24;
+
+/**
+ * course patch: stops the preview iframes from swallowing the mouse while a divider is dragged.
+ */
+function onDividerDragging(isDragging: boolean) {
+  document.documentElement.classList.toggle('tk-resizing', isDragging);
+}
 
 type FileTreeChangeEvent = Parameters<NonNullable<ComponentProps<typeof EditorPanel>['onFileTreeChange']>>[0];
 
@@ -25,6 +35,7 @@ interface PanelProps extends Omit<Props, 'dialog'> {
   hasEditor: boolean;
   hasPreviews: boolean;
   hideTerminalPanel: boolean;
+  panelMinSize?: number;
 }
 
 interface TerminalProps extends PanelProps {
@@ -49,9 +60,67 @@ export function WorkspacePanel({ tutorialStore, theme, dialog }: Props) {
 
   const terminalPanelRef = useRef<ImperativePanelHandle>(null);
   const terminalExpanded = useRef(false);
+  const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+  const [panelMinSize, setPanelMinSize] = useState(10);
+
+  useEffect(() => {
+    const panelGroup = document.querySelector('div[data-panel-group-id="right-panel-group"]' as 'div');
+
+    if (!panelGroup) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      const height = panelGroup?.offsetHeight;
+      setPanelMinSize((MIN_SIZE_IN_PIXELS / height) * 100);
+    });
+    observer.observe(panelGroup);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  // course patch: the corner handle in the main layout moves the editor/preview divider through this event
+  useEffect(() => {
+    function onResizeEditor(event: Event) {
+      const panelGroup = document.querySelector('div[data-panel-group-id="right-panel-group"]' as 'div');
+      const group = panelGroupRef.current;
+
+      if (!panelGroup || !group) {
+        return;
+      }
+
+      const { top, height } = panelGroup.getBoundingClientRect();
+      const [, , terminal] = group.getLayout();
+      const clientY = (event as CustomEvent<{ clientY: number }>).detail.clientY;
+      const editor = Math.max(
+        panelMinSize,
+        Math.min(100 - terminal - panelMinSize, ((clientY - top) / height) * 100),
+      );
+      group.setLayout([editor, 100 - terminal - editor, terminal]);
+    }
+
+    window.addEventListener('tk:resize-editor', onResizeEditor);
+
+    return () => window.removeEventListener('tk:resize-editor', onResizeEditor);
+  }, [panelMinSize]);
+
+  // course patch: tell the corner handle once the new layout is on the page, so it can follow the divider
+  const [workspaceLayout, setWorkspaceLayout] = useState<number[]>([]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('tk:workspace-layout'));
+  }, [workspaceLayout, hasEditor]);
 
   return (
-    <PanelGroup className={resizePanelStyles.PanelGroup} id="right-panel-group" direction="vertical">
+    <PanelGroup
+      ref={panelGroupRef}
+      className={resizePanelStyles.PanelGroup}
+      id="right-panel-group"
+      direction="vertical"
+      onLayout={setWorkspaceLayout}
+    >
       <DialogProvider value={dialog}>
         <EditorSection
           theme={theme}
@@ -59,13 +128,16 @@ export function WorkspacePanel({ tutorialStore, theme, dialog }: Props) {
           hasEditor={hasEditor}
           hasPreviews={hasPreviews}
           hideTerminalPanel={hideTerminalPanel}
+          panelMinSize={panelMinSize}
         />
       </DialogProvider>
 
       <PanelResizeHandle
+        id="editor-preview-handle"
         className={resizePanelStyles.PanelResizeHandle}
         hitAreaMargins={{ fine: 5, coarse: 5 }}
         disabled={!hasEditor}
+        onDragging={onDividerDragging}
       />
 
       <PreviewsSection
@@ -76,12 +148,14 @@ export function WorkspacePanel({ tutorialStore, theme, dialog }: Props) {
         hideTerminalPanel={hideTerminalPanel}
         hasPreviews={hasPreviews}
         hasEditor={hasEditor}
+        panelMinSize={panelMinSize}
       />
 
       <PanelResizeHandle
         className={resizePanelStyles.PanelResizeHandle}
         hitAreaMargins={{ fine: 5, coarse: 5 }}
         disabled={hideTerminalPanel || !hasPreviews}
+        onDragging={onDividerDragging}
       />
 
       <TerminalSection
@@ -97,7 +171,7 @@ export function WorkspacePanel({ tutorialStore, theme, dialog }: Props) {
   );
 }
 
-function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
+function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelProps) {
   const [helpAction, setHelpAction] = useState<'solve' | 'reset'>('reset');
   const selectedFile = useStore(tutorialStore.selectedFile);
   const currentDocument = useStore(tutorialStore.currentDocument);
@@ -172,7 +246,7 @@ function EditorSection({ theme, tutorialStore, hasEditor }: PanelProps) {
     <Panel
       id={hasEditor ? 'editor-opened' : 'editor-closed'}
       defaultSize={hasEditor ? 50 : 0}
-      minSize={10}
+      minSize={panelMinSize}
       maxSize={hasEditor ? 100 : 0}
       collapsible={!hasEditor}
       className="transition-theme bg-tk-elements-panel-backgroundColor text-tk-elements-panel-textColor"
@@ -283,6 +357,7 @@ function PreviewsSection({
   hideTerminalPanel,
   hasPreviews,
   hasEditor,
+  panelMinSize,
 }: TerminalProps) {
   const previewRef = useRef<ImperativePreviewHandle>(null);
   const lesson = tutorialStore.lesson!;
@@ -338,27 +413,6 @@ function PreviewsSection({
 
     return () => unsubscribe();
   }, [storeRef]);
-
-  const MIN_SIZE_IN_PIXELS = 38;
-  const [panelMinSize, setPanelMinSize] = useState(10);
-
-  useEffect(() => {
-    const panelGroup = document.querySelector('div[data-panel-group-id="right-panel-group"]' as 'div');
-
-    if (!panelGroup) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      const height = panelGroup?.offsetHeight;
-      setPanelMinSize((MIN_SIZE_IN_PIXELS / height) * 100);
-    });
-    observer.observe(panelGroup);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
 
   return (
     <Panel
