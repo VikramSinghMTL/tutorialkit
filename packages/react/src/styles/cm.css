@@ -102,3 +102,16 @@ html[data-theme='dark'] {
 .tk-show-all-files { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.75rem; color: var(--tk-text-secondary); font-size: 0.75rem; cursor: pointer; }
 .tk-show-all-files input { accent-color: var(--tk-elements-panel-headerButton-iconColorHover); }
 .tk-readonly-badge { margin-left: 0.5rem; padding: 0.1rem 0.4rem; border: 1px solid var(--tk-elements-app-borderColor); border-radius: 999px; color: var(--tk-text-secondary); font-size: 0.7rem; line-height: 1; }
+
+/* course patch: the Console tab, and the preview header's error badge and debug controls */
+.tk-console-row { color: var(--tk-elements-panel-textColor); }
+.tk-console-warn { color: #e5a50a; background: rgba(229, 165, 10, 0.08); }
+.tk-console-error { color: #f87171; background: rgba(248, 113, 113, 0.08); }
+.tk-console-count { min-width: 1.25rem; padding: 0 0.35rem; border-radius: 999px; background: var(--tk-elements-app-borderColor); color: var(--tk-elements-panel-textColor); text-align: center; line-height: 1.1rem; }
+.tk-console-link { color: var(--tk-text-active, #7aa2f7); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+.tk-console-link:hover { text-decoration-thickness: 2px; }
+.tk-preview-error-badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.05rem 0.45rem; border-radius: 999px; background: #dc2626; color: #fff; font-size: 0.75rem; line-height: 1.1rem; font-weight: 600; cursor: pointer; border: 0; }
+.tk-preview-error-badge:hover { background: #b91c1c; }
+.tk-preview-speed { padding: 0 0.25rem; border: 1px solid var(--tk-elements-app-borderColor); border-radius: 0.375rem; background: transparent; color: inherit; font-size: 0.75rem; }
+.tk-preview-speed option { color: initial; }
+.panel-button[aria-pressed='true'] .panel-icon { color: var(--tk-text-active, #7aa2f7); }

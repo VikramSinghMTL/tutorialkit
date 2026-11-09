@@ -17,6 +17,8 @@ interface Props {
   scope?: string;
   hiddenFiles?: Array<string | RegExp>;
   className?: string;
+  /** course patch: files that get a dot because they're new or changed since the previous lesson. */
+  markedFiles?: Set<string>;
 }
 
 export function FileTree({
@@ -30,6 +32,7 @@ export function FileTree({
   hiddenFiles,
   i18n,
   className,
+  markedFiles,
 }: Props) {
   const computedHiddenFiles = useMemo(() => [...DEFAULT_HIDDEN_FILES, ...(hiddenFiles ?? [])], [hiddenFiles]);
 
@@ -97,6 +100,7 @@ export function FileTree({
               <File
                 key={fileOrFolder.id}
                 selected={selectedFile === fileOrFolder.fullPath}
+                marked={markedFiles?.has(fileOrFolder.fullPath) ?? false}
                 file={fileOrFolder}
                 onClick={() => onFileSelect?.(fileOrFolder.fullPath)}
               />
@@ -179,10 +183,11 @@ function Folder({
 interface FileProps {
   file: FileNode;
   selected: boolean;
+  marked: boolean;
   onClick: () => void;
 }
 
-function File({ file: { depth, name }, onClick, selected }: FileProps) {
+function File({ file: { depth, name }, onClick, selected, marked }: FileProps) {
   const extension = getFileExtension(name);
   const fileIcon = extensionsToIcons.get(extension) || 'i-ph-file-duotone';
 
@@ -203,6 +208,22 @@ function File({ file: { depth, name }, onClick, selected }: FileProps) {
       aria-pressed={selected}
     >
       {name}
+      {marked && (
+        <span
+          className="tk-file-changed-dot"
+          title="New or changed in this lesson"
+          aria-label="New or changed in this lesson"
+          style={{
+            display: 'inline-block',
+            width: '0.4rem',
+            height: '0.4rem',
+            marginLeft: '0.4rem',
+            borderRadius: '999px',
+            background: '#22c55e',
+            verticalAlign: 'middle',
+          }}
+        />
+      )}
     </NodeButton>
   );
 }

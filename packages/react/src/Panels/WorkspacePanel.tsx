@@ -7,7 +7,9 @@ import { DialogProvider } from '../core/Dialog.js';
 import type { Theme } from '../core/types.js';
 import resizePanelStyles from '../styles/resize-panel.module.css';
 import { classNames } from '../utils/classnames.js';
+import { revealRequest, whatsNewFiles } from '../core/CodeMirrorEditor/line-marks.js';
 import { EditorPanel } from './EditorPanel.js';
+import { showConsoleTab } from './preview-bridge.js';
 import { PreviewPanel, type ImperativePreviewHandle } from './PreviewPanel.js';
 import { TerminalPanel } from './TerminalPanel.js';
 
@@ -252,7 +254,31 @@ function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelP
     } else {
       setHelpAction('reset');
     }
+
+    // course patch: the page sends this lesson's "What's new" files once it has loaded them
+    whatsNewFiles.set(undefined);
   }, [storeRef]);
+
+  // course patch: console links and snippet titles open a file at some lines
+  useEffect(() => {
+    function onOpenFile(event: Event) {
+      const { filePath, line, endLine } = (event as CustomEvent<{ filePath: string; line: number; endLine?: number }>)
+        .detail;
+      const documents = tutorialStore.documents.get();
+      const workspace = (tutorialStore as any)._lessonTemplate ?? {};
+
+      if (!documents[filePath] && findWorkspaceFile(workspace, filePath) === undefined) {
+        return;
+      }
+
+      revealRequest.set({ filePath, line, endLine: endLine ?? line });
+      openDefinition(tutorialStore, documents, workspace, filePath);
+    }
+
+    window.addEventListener('tutorialkit:open-file', onOpenFile);
+
+    return () => window.removeEventListener('tutorialkit:open-file', onOpenFile);
+  }, []);
 
   return (
     <Panel
@@ -391,6 +417,14 @@ function PreviewsSection({
     }
   }
 
+  const showConsole = useCallback(() => {
+    if (terminalPanelRef.current?.isCollapsed()) {
+      showTerminal();
+    }
+
+    showConsoleTab();
+  }, []);
+
   const toggleTerminal = useCallback(() => {
     if (terminalPanelRef.current?.isCollapsed()) {
       showTerminal();
@@ -443,6 +477,7 @@ function PreviewsSection({
         i18n={lesson.data.i18n as I18n}
         showToggleTerminal={!hideTerminalPanel}
         toggleTerminal={toggleTerminal}
+        showConsole={showConsole}
       />
     </Panel>
   );

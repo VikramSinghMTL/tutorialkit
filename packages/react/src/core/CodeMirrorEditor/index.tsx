@@ -25,6 +25,16 @@ import { BinaryContent } from './BinaryContent.js';
 import { getTheme, reconfigureTheme } from './cm-theme.js';
 import { indentKeyBinding } from './indent.js';
 import { getLanguage } from './languages.js';
+import {
+  lineMarks,
+  markNewLines,
+  newLineNumbers,
+  revealLines,
+  revealRequest,
+  whatsNewFiles,
+  whatsNewVisible,
+  type RevealRequest,
+} from './line-marks.js';
 
 export interface EditorDocument {
   value: string | Uint8Array;
@@ -104,6 +114,9 @@ export function CodeMirrorEditor({
   const onChangeRef = useRef(onChange);
   const typeScriptProjectRef = useRef<any>();
   const onDefinitionRef = useRef(onDefinition);
+  // course patch: a file switch restores its scroll position a frame later, so a reveal waits for that
+  const isSettlingRef = useRef(false);
+  const pendingRevealRef = useRef<RevealRequest>();
 
   const isBinaryFile = doc?.value instanceof Uint8Array;
 
@@ -150,15 +163,71 @@ export function CodeMirrorEditor({
 
     viewRef.current = view;
 
+    const unsubscribeReveal = revealRequest.subscribe((request) => {
+      if (request) {
+        pendingRevealRef.current = request;
+        applyPendingReveal();
+      }
+    });
+    const unsubscribeWhatsNew = whatsNewFiles.subscribe(() => applyNewLines());
+    const unsubscribeWhatsNewVisible = whatsNewVisible.subscribe(() => applyNewLines());
+
     // we grab the style tag that codemirror mounts
     const codemirrorStyleTag = document.head.children[0];
     codemirrorStyleTag.setAttribute('data-astro-transition-persist', 'codemirror');
 
     return () => {
+      unsubscribeReveal();
+      unsubscribeWhatsNew();
+      unsubscribeWhatsNewVisible();
       viewRef.current?.destroy();
       viewRef.current = undefined;
     };
   }, []);
+
+  /** course patch: shows the lines a console link or snippet asked for, once their file is in the editor. */
+  function applyPendingReveal() {
+    const view = viewRef.current;
+    const request = pendingRevealRef.current;
+    const current = docRef.current;
+
+    if (!view || !request || !current || current.loading || isSettlingRef.current) {
+      return;
+    }
+
+    if (current.filePath !== request.filePath || typeof current.value !== 'string') {
+      return;
+    }
+
+    pendingRevealRef.current = undefined;
+    revealRequest.set(undefined);
+    revealLines(view, request.line, request.endLine);
+  }
+
+  /** course patch: marks the open file's lines that are new since the previous lesson. */
+  function applyNewLines() {
+    const view = viewRef.current;
+    const current = docRef.current;
+
+    if (!view || !current || typeof current.value !== 'string') {
+      return;
+    }
+
+    const files = whatsNewFiles.get();
+    const starting = files?.current[current.filePath];
+
+    if (!files || !whatsNewVisible.get() || typeof starting !== 'string') {
+      markNewLines(view, []);
+      return;
+    }
+
+    const previous = files.previous[current.filePath];
+
+    markNewLines(
+      view,
+      newLineNumbers(typeof previous === 'string' ? previous : undefined, starting, view.state.doc.toString()),
+    );
+  }
 
   useEffect(() => {
     if (!viewRef.current) {
@@ -238,7 +307,14 @@ export function CodeMirrorEditor({
     if (stateChanged) view.setState(state);
 
     if (stateChanged || doc.value !== view.state.doc.toString()) {
-      setEditorDocument(view, theme, language, readOnly, autoFocusOnDocumentChange, doc as TextEditorDocument);
+      isSettlingRef.current = true;
+      setEditorDocument(view, theme, language, readOnly, autoFocusOnDocumentChange, doc as TextEditorDocument, () => {
+        isSettlingRef.current = false;
+        applyPendingReveal();
+      });
+      applyNewLines();
+    } else {
+      applyPendingReveal();
     }
   }, [doc?.value, doc?.filePath, doc?.loading, autoFocusOnDocumentChange]);
 
@@ -320,6 +396,7 @@ function newEditorState(
           }
         },
       }),
+      lineMarks(),
       getTheme(theme, settings),
       history(),
       keymap.of([
@@ -377,6 +454,7 @@ function setEditorDocument(
   readOnly: Compartment,
   autoFocus: boolean,
   doc: TextEditorDocument,
+  onSettled: () => void,
 ) {
   if (doc.value !== view.state.doc.toString()) {
     view.dispatch({
@@ -395,6 +473,7 @@ function setEditorDocument(
 
   getLanguage(doc.filePath).then((languageSupport) => {
     if (!languageSupport) {
+      onSettled();
       return;
     }
 
@@ -427,6 +506,7 @@ function setEditorDocument(
       }
 
       view.scrollDOM.scrollTo(newLeft, newTop);
+      onSettled();
     });
   });
 }

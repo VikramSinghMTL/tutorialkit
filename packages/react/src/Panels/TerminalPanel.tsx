@@ -4,6 +4,8 @@ import type { TerminalPanelType } from '@tutorialkit/types';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { TerminalRef } from '../core/Terminal/index.js';
 import { classNames } from '../utils/classnames.js';
+import { ConsolePanel } from './ConsolePanel.js';
+import { consoleErrorCount, consoleTabRequest, hasConsole } from './preview-bridge.js';
 
 const Terminal = lazy(() => import('../core/Terminal/index.js'));
 
@@ -19,6 +21,9 @@ const ICON_MAP = new Map<TerminalPanelType, string>([
 
 export function TerminalPanel({ theme, tutorialStore }: TerminalPanelProps) {
   const terminalConfig = useStore(tutorialStore.terminalConfig);
+  const showConsole = useStore(hasConsole);
+  const errorCount = useStore(consoleErrorCount);
+  const consoleTabIndex = terminalConfig.panels.length;
 
   const terminalRefs = useRef<Record<number, TerminalRef>>({});
 
@@ -34,6 +39,17 @@ export function TerminalPanel({ theme, tutorialStore }: TerminalPanelProps) {
   useEffect(() => {
     setTabIndex(terminalConfig.activePanel);
   }, [terminalConfig]);
+
+  // course patch: the preview's error badge opens the Console tab
+  useEffect(() => {
+    return consoleTabRequest.listen(() => setTabIndex(consoleTabIndex));
+  }, [consoleTabIndex]);
+
+  useEffect(() => {
+    if (!showConsole && tabIndex === consoleTabIndex) {
+      setTabIndex(terminalConfig.activePanel);
+    }
+  }, [showConsole]);
 
   useEffect(() => {
     return tutorialStore.themeRef.subscribe(() => {
@@ -87,6 +103,32 @@ export function TerminalPanel({ theme, tutorialStore }: TerminalPanelProps) {
                 </li>
               );
             })}
+            {showConsole && (
+              <li>
+                <button
+                  className={classNames(
+                    'group h-full px-4 flex items-center gap-1.5 whitespace-nowrap text-sm position-relative transition-theme border-r border-tk-elements-panel-headerTab-borderColor',
+                    {
+                      'bg-tk-elements-panel-headerTab-backgroundColor text-tk-elements-panel-headerTab-textColor hover:bg-tk-elements-panel-headerTab-backgroundColorHover hover:text-tk-elements-panel-headerTab-textColorHover':
+                        tabIndex !== consoleTabIndex,
+                      'bg-tk-elements-panel-headerTab-backgroundColorActive text-tk-elements-panel-headerTab-textColorActive border-tk-elements-panel-headerTab-borderColorActive shadow-[0px_1px_0px_0px] shadow-tk-elements-panel-headerTab-backgroundColorActive':
+                        tabIndex === consoleTabIndex,
+                      'border-l': consoleTabIndex > 0,
+                    },
+                  )}
+                  title="Console"
+                  id="tk-terminal-tab-console"
+                  role="tab"
+                  aria-selected={tabIndex === consoleTabIndex}
+                  aria-controls="tk-terminal-tapbanel-console"
+                  onClick={() => setTabIndex(consoleTabIndex)}
+                >
+                  <span className="text-tk-elements-panel-headerTab-iconColor i-ph-bug-duotone"></span>
+                  Console
+                  {errorCount > 0 && <span className="tk-preview-error-badge">{errorCount}</span>}
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       </div>
@@ -112,6 +154,13 @@ export function TerminalPanel({ theme, tutorialStore }: TerminalPanelProps) {
               />
             ))}
           </Suspense>
+        )}
+        {showConsole && (
+          <ConsolePanel
+            id="tk-terminal-tapbanel-console"
+            labelledBy="tk-terminal-tab-console"
+            hidden={tabIndex !== consoleTabIndex}
+          />
         )}
       </div>
     </div>

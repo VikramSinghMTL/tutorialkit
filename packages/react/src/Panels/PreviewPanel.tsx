@@ -7,10 +7,19 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { BootScreen } from '../BootScreen.js';
 import resizePanelStyles from '../styles/resize-panel.module.css';
 import { classNames } from '../utils/classnames.js';
+import {
+  consoleErrorCount,
+  debugState,
+  hasDebugControls,
+  resetPreviewBridge,
+  sendDebug,
+} from './preview-bridge.js';
 
 interface Props {
   showToggleTerminal?: boolean;
   toggleTerminal?: () => void;
+  /** course patch: opens the terminal panel on its Console tab. */
+  showConsole?: () => void;
   tutorialStore: TutorialStore;
   i18n: I18n;
 }
@@ -40,7 +49,7 @@ export type ImperativePreviewHandle = {
 };
 
 export const PreviewPanel = memo(
-  forwardRef<ImperativePreviewHandle, Props>(({ showToggleTerminal, toggleTerminal, i18n, tutorialStore }, ref) => {
+  forwardRef<ImperativePreviewHandle, Props>(({ showToggleTerminal, toggleTerminal, showConsole, i18n, tutorialStore }, ref) => {
     const expectedPreviews = useStore(tutorialStore.previews);
     const iframeRefs = useRef<IFrameRef[]>([]);
     const [muted, setMuted] = useState(readMuted);
@@ -103,6 +112,8 @@ export const PreviewPanel = memo(
       ref,
       () => ({
         reload: () => {
+          resetPreviewBridge();
+
           for (const iframe of iframeRefs.current) {
             if (iframe.ref) {
               iframe.ref.src = iframe.ref.src;
@@ -183,6 +194,7 @@ export const PreviewPanel = memo(
             tutorialStore={tutorialStore}
             muted={muted}
             toggleMuted={toggleMuted}
+            showConsole={showConsole}
           />
         </Panel>,
       );
@@ -208,6 +220,7 @@ interface PreviewProps {
   tutorialStore: TutorialStore;
   muted: boolean;
   toggleMuted: () => void;
+  showConsole?: () => void;
 }
 
 function Preview({
@@ -221,9 +234,13 @@ function Preview({
   tutorialStore,
   muted,
   toggleMuted,
+  showConsole,
 }: PreviewProps) {
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewLoaded, setPreviewLoaded] = useState(false);
+  const errorCount = useStore(consoleErrorCount);
+  const showDebugControls = useStore(hasDebugControls);
+  const debug = useStore(debugState);
 
   useEffect(() => {
     if (!iframe.ref) {
@@ -236,6 +253,7 @@ function Preview({
     const onLoad = () => setPreviewLoaded(true);
 
     setPreviewLoaded(false);
+    resetPreviewBridge();
     frame.addEventListener('load', onLoad);
 
     if (preview.url) {
@@ -250,6 +268,8 @@ function Preview({
   }, [preview.url, iframe.ref]);
 
   function reload() {
+    resetPreviewBridge();
+
     if (iframe.ref) {
       reloadPreview(iframe.ref);
     }
@@ -279,7 +299,59 @@ function Preview({
           >
             <div className={muted ? 'panel-icon i-ph-speaker-slash' : 'panel-icon i-ph-speaker-high'}></div>
           </button>
+          {showDebugControls && first && (
+            <>
+              <button
+                onClick={() => sendDebug(debug.paused ? 'resume' : 'pause')}
+                title={debug.paused ? 'Resume the game' : 'Pause the game'}
+                aria-label={debug.paused ? 'Resume the game' : 'Pause the game'}
+                aria-pressed={debug.paused}
+                className="panel-button rounded-full p-1.5 -my-1.5"
+              >
+                <div className={debug.paused ? 'panel-icon i-ph-play' : 'panel-icon i-ph-pause'}></div>
+              </button>
+              <button
+                onClick={() => sendDebug('step')}
+                disabled={!debug.paused}
+                title="Run one frame"
+                aria-label="Run one frame"
+                className="panel-button rounded-full p-1.5 -my-1.5 disabled:opacity-40"
+              >
+                <div className="panel-icon i-ph-skip-forward"></div>
+              </button>
+              <select
+                value={debug.speed}
+                onChange={(event) => sendDebug('speed', Number(event.target.value))}
+                title="Game speed"
+                aria-label="Game speed"
+                className="tk-preview-speed -my-1"
+              >
+                <option value={0.25}>0.25×</option>
+                <option value={0.5}>0.5×</option>
+                <option value={1}>1×</option>
+              </select>
+              <button
+                onClick={() => sendDebug('debug', !debug.debug)}
+                title={debug.debug ? 'Hide the debug panel' : 'Show the debug panel'}
+                aria-label={debug.debug ? 'Hide the debug panel' : 'Show the debug panel'}
+                aria-pressed={debug.debug}
+                className="panel-button rounded-full p-1.5 -my-1.5"
+              >
+                <div className="panel-icon i-ph-bug"></div>
+              </button>
+            </>
+          )}
           <span className="text-sm truncate">{previewTitle(preview, previewCount, i18n)}</span>
+          {errorCount > 0 && first && (
+            <button
+              onClick={() => showConsole?.()}
+              title="Show the errors in the Console tab"
+              className="tk-preview-error-badge -my-1"
+            >
+              <div className="i-ph-warning-circle-fill"></div>
+              {errorCount === 1 ? '1 error' : `${errorCount} errors`}
+            </button>
+          )}
         </div>
         {last && (
           <button

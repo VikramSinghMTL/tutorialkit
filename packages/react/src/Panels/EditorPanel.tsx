@@ -1,5 +1,6 @@
+import { useStore } from '@nanostores/react';
 import type { I18n } from '@tutorialkit/types';
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import {
   CodeMirrorEditor,
@@ -7,6 +8,12 @@ import {
   type OnChangeCallback as OnEditorChange,
   type OnScrollCallback as OnEditorScroll,
 } from '../core/CodeMirrorEditor/index.js';
+import {
+  changedFilePaths,
+  setWhatsNewVisible,
+  whatsNewFiles,
+  whatsNewVisible,
+} from '../core/CodeMirrorEditor/line-marks.js';
 import { FileTree } from '../core/FileTree.js';
 import type { Theme } from '../core/types.js';
 import resizePanelStyles from '../styles/resize-panel.module.css';
@@ -61,6 +68,9 @@ export function EditorPanel({
 }: Props) {
   const fileTreePanelRef = useRef<ImperativePanelHandle>(null);
   const [showAllFiles, setShowAllFiles] = useState(false);
+  const whatsNew = useStore(whatsNewFiles);
+  const isWhatsNewVisible = useStore(whatsNewVisible);
+  const changedFiles = useMemo(() => changedFilePaths(whatsNew), [whatsNew]);
 
   useEffect(() => {
     const { current: fileTreePanel } = fileTreePanelRef;
@@ -98,6 +108,7 @@ export function EditorPanel({
           allowEditPatterns={allowEditPatterns}
           onFileSelect={onFileSelect}
           onFileChange={onFileTreeChange}
+          markedFiles={isWhatsNewVisible ? changedFiles : undefined}
         />
       </Panel>
       <PanelResizeHandle
@@ -106,7 +117,14 @@ export function EditorPanel({
         hitAreaMargins={{ fine: 8, coarse: 8 }}
       />
       <Panel className="flex flex-col" defaultSize={100} minSize={10}>
-        <FileTab i18n={i18n} editorDocument={editorDocument} onHelpClick={onHelpClick} helpAction={helpAction} />
+        <FileTab
+          i18n={i18n}
+          editorDocument={editorDocument}
+          onHelpClick={onHelpClick}
+          helpAction={helpAction}
+          hasWhatsNew={!!whatsNew}
+          isWhatsNewVisible={isWhatsNewVisible}
+        />
         <div className="h-full flex-1 overflow-hidden">
           <CodeMirrorEditor
             className="h-full"
@@ -132,9 +150,11 @@ interface FileTabProps {
   editorDocument: EditorDocument | undefined;
   helpAction?: 'reset' | 'solve';
   onHelpClick?: () => void;
+  hasWhatsNew: boolean;
+  isWhatsNewVisible: boolean;
 }
 
-function FileTab({ i18n, editorDocument, helpAction, onHelpClick }: FileTabProps) {
+function FileTab({ i18n, editorDocument, helpAction, onHelpClick, hasWhatsNew, isWhatsNewVisible }: FileTabProps) {
   const filePath = editorDocument?.filePath;
   const fileName = filePath?.split('/').at(-1) ?? '';
   const icon = fileName ? getFileIcon(fileName) : '';
@@ -146,6 +166,26 @@ function FileTab({ i18n, editorDocument, helpAction, onHelpClick }: FileTabProps
         <span className="text-sm">{fileName}</span>
         {editorDocument?.readOnly && <span className="tk-readonly-badge">Read-only</span>}
       </div>
+      <div className="flex-1" />
+      {hasWhatsNew && (
+        <button
+          onClick={() => setWhatsNewVisible(!isWhatsNewVisible)}
+          aria-pressed={isWhatsNewVisible}
+          title={isWhatsNewVisible ? "Hide what's new since the last lesson" : "Show what's new since the last lesson"}
+          className="panel-button px-2 py-0.5 -my-1"
+        >
+          <div className={isWhatsNewVisible ? 'i-ph-sparkle-fill text-lg' : 'i-ph-sparkle text-lg'} />
+          What's new
+        </button>
+      )}
+      <button
+        onClick={() => window.dispatchEvent(new Event('tutorialkit:download-request'))}
+        title="Download this lesson, with your edits, as a zip"
+        className="panel-button px-2 py-0.5 -my-1"
+      >
+        <div className="i-ph-download-simple text-lg" />
+        Download
+      </button>
       {!!helpAction && (
         <button onClick={onHelpClick} disabled={!onHelpClick} className="panel-button px-2 py-0.5 -mr-1 -my-1">
           {helpAction === 'solve' && <div className="i-ph-lightbulb-duotone text-lg" />}
