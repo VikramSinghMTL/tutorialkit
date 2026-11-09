@@ -23,6 +23,14 @@ function onDividerDragging(isDragging: boolean) {
   document.documentElement.classList.toggle('tk-resizing', isDragging);
 }
 
+/**
+ * course patch: lets the page confirm a reset first. The page cancels this event, asks the student,
+ * and resets the lesson itself once they agree.
+ */
+function isResetAllowed() {
+  return window.dispatchEvent(new Event('tutorialkit:reset-request', { cancelable: true }));
+}
+
 type FileTreeChangeEvent = Parameters<NonNullable<ComponentProps<typeof EditorPanel>['onFileTreeChange']>>[0];
 
 interface Props {
@@ -207,6 +215,10 @@ function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelP
     if (tutorialStore.hasSolution()) {
       setHelpAction((action) => {
         if (action === 'reset') {
+          if (!isResetAllowed()) {
+            return action;
+          }
+
           tutorialStore.reset();
           window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
 
@@ -218,7 +230,7 @@ function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelP
           return 'reset';
         }
       });
-    } else {
+    } else if (isResetAllowed()) {
       tutorialStore.reset();
       window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
     }
