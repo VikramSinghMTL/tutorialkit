@@ -44,6 +44,7 @@ const CONSOLE_MESSAGE = 'tutorial:console';
 const CONSOLE_READY_MESSAGE = 'tutorial:console-ready';
 const DEBUG_MESSAGE = 'tutorial:debug';
 const DEBUG_READY_MESSAGE = 'tutorial:debug-ready';
+const DEBUG_VIEW_MESSAGE = 'tutorial:debug-view';
 const MAX_ENTRIES = 500;
 const LEVELS = new Set<string>(['log', 'info', 'warn', 'error']);
 const DEFAULT_DEBUG_STATE: DebugState = { paused: false, speed: 1, debug: false };
@@ -216,6 +217,9 @@ if (globalThis.window) {
     } else if (type === DEBUG_READY_MESSAGE) {
       debugState.set(DEFAULT_DEBUG_STATE);
       hasDebugControls.set(true);
+    } else if (type === DEBUG_VIEW_MESSAGE && typeof event.data.visible === 'boolean') {
+      // The game can show its debug view itself, from a key or a menu, so the button follows it.
+      debugState.set({ ...debugState.get(), debug: event.data.visible });
     }
   });
 }
