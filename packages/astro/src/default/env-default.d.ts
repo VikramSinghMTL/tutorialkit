@@ -15,5 +15,11 @@ declare module 'tutorialkit:override-components' {
   export { topBar as TopBar, dialog as Dialog, headTags as HeadTags };
 }
 
+declare module 'tutorialkit:override-dialog' {
+  const dialog: typeof import('@tutorialkit/react/dialog').default;
+
+  export { dialog as Dialog };
+}
+
 declare const __ENTERPRISE__: boolean;
 declare const __WC_CONFIG__: WebContainerConfig | undefined;

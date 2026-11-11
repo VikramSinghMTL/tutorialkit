@@ -82,6 +82,13 @@ interface Options {
 const virtualModuleId = 'tutorialkit:override-components';
 const resolvedId = `\0${virtualModuleId}`;
 
+/**
+ * course patch: the dialog alone, for client islands. Importing it from the module above would also bundle the
+ * TopBar and HeadTags, which are server components, into the browser.
+ */
+const dialogModuleId = 'tutorialkit:override-dialog';
+const resolvedDialogId = `\0${dialogModuleId}`;
+
 export function overrideComponents({ components, defaultRoutes }: Options): VitePlugin {
   return {
     name: 'tutorialkit-override-components-plugin',
@@ -90,9 +97,17 @@ export function overrideComponents({ components, defaultRoutes }: Options): Vite
         return resolvedId;
       }
 
+      if (id === dialogModuleId) {
+        return resolvedDialogId;
+      }
+
       return undefined;
     },
     async load(id) {
+      if (id === resolvedDialogId) {
+        return `export { default as Dialog } from '${components?.Dialog || '@tutorialkit/react/dialog'}';`;
+      }
+
       if (id === resolvedId) {
         const topBar = components?.TopBar || resolveDefaultTopBar(defaultRoutes);
         const headTags = components?.HeadTags || resolveDefaultHeadTags(defaultRoutes);

@@ -75,7 +75,7 @@ interface Props {
   projectDocuments?: Record<string, { value: string | Uint8Array } | undefined> | Map<string, { value: string | Uint8Array }>;
   workspaceFiles?: unknown;
   projectFiles?: unknown;
-  onDefinition?: (filePath: string) => void;
+  onDefinition?: (filePath: string, line: number) => void;
   doc?: EditorDocument;
   debounceChange?: number;
   debounceScroll?: number;
@@ -344,6 +344,13 @@ const signatureTooltip = StateField.define<any>({
 function signatureHelp(projectRef: { current: any }, filePath: string) {
   return [signatureTooltip, EditorView.updateListener.of((update) => {
     if (!update.docChanged) return;
+
+    // course patch: asking TypeScript on every keystroke slows typing, so only ask once a call opens or moves to
+    // its next argument, and while a hint shows, so it follows the cursor and closes after the call.
+    let inserted = '';
+    update.changes.iterChanges((_fromA, _toA, _fromB, _toB, text) => { inserted += text.toString(); });
+    if (!/[(,]/.test(inserted) && !update.startState.field(signatureTooltip)) return;
+
     requestAnimationFrame(() => {
       const info = typeScriptSignature(projectRef.current, filePath, update.view.state.doc.toString(), update.view.state.selection.main.head);
       const tooltip = !info ? null : {
@@ -358,10 +365,10 @@ function signatureHelp(projectRef: { current: any }, filePath: string) {
   })];
 }
 
-function openDefinition(view: EditorView, project: any, filePath: string, onDefinition?: (filePath: string) => void) {
+function openDefinition(view: EditorView, project: any, filePath: string, onDefinition?: (filePath: string, line: number) => void) {
   if (!onDefinition) return false;
   const definition = typeScriptDefinition(project, filePath, view.state.doc.toString(), view.state.selection.main.head);
-  if (definition) onDefinition(definition);
+  if (definition) onDefinition(definition.filePath, definition.line);
   // Always consume F12: otherwise browsers open their developer tools when the
   // symbol has no local definition (for example, a standard-library symbol).
   return true;

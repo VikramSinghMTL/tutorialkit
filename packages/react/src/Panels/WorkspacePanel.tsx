@@ -182,7 +182,6 @@ export function WorkspacePanel({ tutorialStore, theme, dialog }: Props) {
 }
 
 function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelProps) {
-  const [helpAction, setHelpAction] = useState<'solve' | 'reset'>('reset');
   const selectedFile = useStore(tutorialStore.selectedFile);
   const currentDocument = useStore(tutorialStore.currentDocument);
   const lessonFullyLoaded = useStore(tutorialStore.lessonFullyLoaded);
@@ -209,33 +208,22 @@ function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelP
 
   const lesson = tutorialStore.lesson!;
 
-  function onHelpClick() {
-    // Keep the button's server/client markup stable; clicks during file loading
-    // are harmlessly ignored until the workspace is ready.
+  /*
+   * course patch: Reset and Solve are separate buttons, so Reset is there even when a lesson has a solution.
+   * Clicks while files are loading are ignored, which keeps the buttons' server and client markup the same.
+   */
+  function onReset() {
+    if (!lessonFullyLoaded || !isResetAllowed()) return;
+
+    tutorialStore.reset();
+    window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
+  }
+
+  function onSolve() {
     if (!lessonFullyLoaded) return;
 
-    if (tutorialStore.hasSolution()) {
-      setHelpAction((action) => {
-        if (action === 'reset') {
-          if (!isResetAllowed()) {
-            return action;
-          }
-
-          tutorialStore.reset();
-          window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
-
-          return 'solve';
-        } else {
-          tutorialStore.solve();
-          window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
-
-          return 'reset';
-        }
-      });
-    } else if (isResetAllowed()) {
-      tutorialStore.reset();
-      window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
-    }
+    tutorialStore.solve();
+    window.dispatchEvent(new Event('tutorialkit:workspace-restored'));
   }
 
   async function onFileTreeChange({ method, type, value }: FileTreeChangeEvent) {
@@ -249,12 +237,6 @@ function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelP
   }
 
   useEffect(() => {
-    if (tutorialStore.hasSolution()) {
-      setHelpAction('solve');
-    } else {
-      setHelpAction('reset');
-    }
-
     // course patch: the page sends this lesson's "What's new" files once it has loaded them
     whatsNewFiles.set(undefined);
   }, [storeRef]);
@@ -300,11 +282,20 @@ function EditorSection({ theme, tutorialStore, hasEditor, panelMinSize }: PanelP
         workspaceFiles={workspaceFiles}
         i18n={lesson.data.i18n as I18n}
         hideRoot={lesson.data.hideRoot}
-        helpAction={helpAction}
-        onHelpClick={onHelpClick}
+        hasSolution={tutorialStore.hasSolution()}
+        onReset={onReset}
+        onSolve={onSolve}
         onFileSelect={(filePath) => tutorialStore.setSelectedFile(filePath)}
         onFileTreeChange={onFileTreeChange}
-        onDefinition={(filePath) => openDefinition(tutorialStore, projectDocuments, workspaceFiles, filePath)}
+        onDefinition={(filePath, line) => {
+          // course patch: jump to the definition's line once its file is open
+          const path = resolveFilePath(projectDocuments, workspaceFiles, filePath);
+
+          if (path) {
+            revealRequest.set({ filePath: path, line, endLine: line });
+            openDefinition(tutorialStore, projectDocuments, workspaceFiles, path);
+          }
+        }}
         allowEditPatterns={editorConfig.fileTree.allowEdits || undefined}
         selectedFile={selectedFile}
         onEditorScroll={(position) => tutorialStore.setCurrentDocumentScrollPosition(position)}
@@ -371,6 +362,17 @@ function openDefinition(tutorialStore: TutorialStore, documents: any, workspace:
   editorStore?.updateFile(filePath, content);
   tutorialStore.setSelectedFile(filePath);
 }
+/**
+ * course patch: TypeScript names files without the leading slash the editor's documents use, so try both.
+ *
+ * @returns The path the editor knows the file by, or nothing when it isn't in the lesson.
+ */
+function resolveFilePath(documents: any, workspace: any, filePath: string): string | undefined {
+  const candidates = [filePath, filePath.startsWith('/') ? filePath.slice(1) : `/${filePath}`];
+
+  return candidates.find((path) => documents?.[path] || findWorkspaceFile(workspace, path) !== undefined);
+}
+
 function findWorkspaceFile(source: any, target: string, base = ''): string | undefined {
   if (!source || source instanceof Uint8Array) return undefined;
   const entries = source instanceof Map ? [...source.entries()] : Array.isArray(source) ? source.map((value, index) => [String(index), value]) : typeof source === 'object' ? Object.entries(source) : [];

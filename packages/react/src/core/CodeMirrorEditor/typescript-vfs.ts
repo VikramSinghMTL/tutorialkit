@@ -36,7 +36,8 @@ const fixedCompilerOptions: ts.CompilerOptions = {
 
 const defaultCompilerOptions: ts.CompilerOptions = {
   module: ts.ModuleKind.ESNext,
-  moduleResolution: ts.ModuleResolutionKind.NodeJs,
+  // course patch: TypeScript 6 deprecates node10 resolution and baseUrl, and paths resolve without a baseUrl.
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
   jsx: ts.JsxEmit.ReactJSX,
   allowJs: true,
   checkJs: true,
@@ -56,9 +57,6 @@ function projectCompilerOptions(...sources: unknown[]): ts.CompilerOptions {
     options = ts.convertCompilerOptionsFromJson(json?.compilerOptions ?? {}, '/').options;
   }
 
-  // paths resolve against baseUrl; without one, use the project root.
-  if (options.paths && !options.baseUrl) options.baseUrl = '/';
-
   return { ...defaultCompilerOptions, ...options, ...fixedCompilerOptions };
 }
 
@@ -67,6 +65,23 @@ const fetchTypeScriptLibrary = async (url: string) => {
   if (filename && unavailableTypeScriptLibraries.has(filename)) {
     return { json: async () => ({}), text: async () => '' };
   }
+
+  // course patch: the page can serve the library files itself, so the editor doesn't depend on TypeScript's CDN.
+  // It sets the folder they're in, and the CDN is only used when a file isn't there.
+  const localFolder = (globalThis as { tutorialKitTypeScriptLib?: string }).tutorialKitTypeScriptLib;
+
+  if (localFolder && filename) {
+    try {
+      const response = await fetch(`${localFolder}${ts.version}/${filename}`);
+
+      if (response.ok) {
+        return response;
+      }
+    } catch {
+      // fall back to the CDN
+    }
+  }
+
   return fetch(url);
 };
 
@@ -97,6 +112,9 @@ export function updateTypeScriptProject(projectRef: { current: any }, documents:
     projectRef.current = createVirtualTypeScriptEnvironment(createSystem(map), [...map.keys()].filter((path) => SOURCE_FILE.test(path)), ts, projectCompilerOptions(templates, files, documents));
   }).catch(() => { if (projectRef.current === snapshot) projectRef.current = undefined; });
 }
+const FALLBACK_KEYWORDS = ['if', 'else', 'for', 'while', 'function', 'return', 'class', 'const', 'let', 'import', 'export'];
+const MAX_COMPLETIONS = 200;
+
 export function typeScriptCompletion(projectRef: { current: any }, filePath: string) {
   const path = virtualPath(filePath);
   return (context: any) => {
@@ -104,13 +122,27 @@ export function typeScriptCompletion(projectRef: { current: any }, filePath: str
     const word = context.matchBefore(/[\w$]*/);
     const member = /\.\s*$/.test(context.state.sliceDoc(0, context.pos));
     if (!context.explicit && (!word || word.from === word.to) && !member) return null;
-    const keywords = member ? [] : ['if', 'else', 'for', 'while', 'function', 'return', 'class', 'const', 'let', 'import', 'export'].map((label) => ({ label, type: 'keyword' }));
-    if (!project?.languageService) return keywords.length ? { from: word?.from ?? context.pos, options: keywords } : null;
+    const from = word?.from ?? context.pos;
+    // Until TypeScript has loaded, offer the common keywords. Once it has, its own list includes them.
+    const keywords = member ? [] : FALLBACK_KEYWORDS.map((label) => ({ label, type: 'keyword' }));
+    if (!project?.languageService) return keywords.length ? { from, options: keywords } : null;
     try {
       try { project.updateFile(path, context.state.doc.toString()); } catch { project.createFile(path, context.state.doc.toString()); }
-      const entries = project.languageService.getCompletionsAtPosition(path, context.pos, {})?.entries ?? [];
-      return { from: word?.from ?? context.pos, validFor: /^[\w$]*$/, options: [...entries.slice(0, 100).map((entry: any) => ({ label: entry.name, type: entry.kind })), ...keywords] };
-    } catch { return keywords.length ? { from: word?.from ?? context.pos, options: keywords } : null; }
+      const entries: any[] = project.languageService.getCompletionsAtPosition(path, context.pos, {})?.entries ?? [];
+
+      // course patch: outside a member, TypeScript lists every global, over a thousand of them, sorted by name.
+      // Keep the ones that start with what's typed before capping, or names like Math and parseInt never show.
+      const typed = context.state.sliceDoc(from, context.pos).toLowerCase();
+      const matching = typed ? entries.filter((entry) => entry.name.toLowerCase().startsWith(typed)) : entries;
+      const isComplete = matching.length <= MAX_COMPLETIONS;
+
+      return {
+        from,
+        // A complete list stays valid as the word grows, and a capped one is asked for again.
+        validFor: isComplete ? /^[\w$]*$/ : (text: string) => text.toLowerCase() === typed,
+        options: matching.slice(0, MAX_COMPLETIONS).map((entry) => ({ label: entry.name, type: entry.kind })),
+      };
+    } catch { return keywords.length ? { from, options: keywords } : null; }
   };
 }
 export function typeScriptSignature(project: any, filePath: string, content: string, position: number) {
@@ -129,9 +161,13 @@ export function typeScriptDefinition(project: any, filePath: string, content: st
   try {
     const path = virtualPath(filePath);
     try { project.updateFile(path, content); } catch { project.createFile(path, content); }
-    const fileName = project.languageService.getDefinitionAtPosition(path, position)?.[0]?.fileName;
+    const definition = project.languageService.getDefinitionAtPosition(path, position)?.[0];
+    const fileName: string | undefined = definition?.fileName;
     if (!fileName || /(^|\/)lib\..*\.d\.ts$/.test(fileName)) return null;
-    return fileName.replace(/^\//, '');
+    // course patch: also the definition's line, so the editor can jump to it
+    const sourceFile = project.languageService.getProgram()?.getSourceFile(fileName);
+    const line = sourceFile ? ts.getLineAndCharacterOfPosition(sourceFile, definition.textSpan.start).line + 1 : 1;
+    return { filePath: fileName.replace(/^\//, ''), line };
   } catch { return null; }
 }
 export function typeScriptHover(projectRef: { current: any }, filePath: string) {

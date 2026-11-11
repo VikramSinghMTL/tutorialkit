@@ -139,10 +139,6 @@ function addConsoleEntry(data: { level?: unknown; args?: unknown; stack?: unknow
   const entries = consoleEntries.get();
   const last = entries.at(-1);
 
-  if (level === 'error') {
-    consoleErrorCount.set(consoleErrorCount.get() + count);
-  }
-
   if (
     last &&
     last.level === level &&
@@ -153,6 +149,12 @@ function addConsoleEntry(data: { level?: unknown; args?: unknown; stack?: unknow
     // one row. An error keeps the stack it first had.
     consoleEntries.set([...entries.slice(0, -1), { ...last, count: last.count + count }]);
     return;
+  }
+
+  // The badge counts error rows, not repeats. A module that fails to load reports once for each script that
+  // imports it, and an error in update() repeats every frame, but each is one thing to fix.
+  if (level === 'error') {
+    consoleErrorCount.set(consoleErrorCount.get() + 1);
   }
 
   consoleEntries.set([...entries, { id: nextId++, level, text, count, frames, location }].slice(-MAX_ENTRIES));

@@ -32,16 +32,17 @@ interface Props {
   hideRoot?: boolean;
   fileTreeScope?: string;
   showFileTree?: boolean;
-  helpAction?: 'solve' | 'reset';
+  hasSolution?: boolean;
+  onReset?: () => void;
+  onSolve?: () => void;
   editorDocument?: EditorDocument;
   selectedFile?: string | undefined;
   allowEditPatterns?: ComponentProps<typeof FileTree>['allowEditPatterns'];
   onEditorChange?: OnEditorChange;
   onEditorScroll?: OnEditorScroll;
-  onHelpClick?: () => void;
   onFileSelect?: (value?: string) => void;
   onFileTreeChange?: ComponentProps<typeof FileTree>['onFileChange'];
-  onDefinition?: (filePath: string) => void;
+  onDefinition?: (filePath: string, line: number) => void;
 }
 
 export function EditorPanel({
@@ -55,13 +56,14 @@ export function EditorPanel({
   hideRoot,
   fileTreeScope,
   showFileTree = true,
-  helpAction,
+  hasSolution,
+  onReset,
+  onSolve,
   editorDocument,
   selectedFile,
   allowEditPatterns,
   onEditorChange,
   onEditorScroll,
-  onHelpClick,
   onFileSelect,
   onFileTreeChange,
   onDefinition,
@@ -120,8 +122,9 @@ export function EditorPanel({
         <FileTab
           i18n={i18n}
           editorDocument={editorDocument}
-          onHelpClick={onHelpClick}
-          helpAction={helpAction}
+          hasSolution={hasSolution}
+          onReset={onReset}
+          onSolve={onSolve}
           hasWhatsNew={!!whatsNew}
           isWhatsNewVisible={isWhatsNewVisible}
         />
@@ -148,13 +151,14 @@ export function EditorPanel({
 interface FileTabProps {
   i18n: I18n;
   editorDocument: EditorDocument | undefined;
-  helpAction?: 'reset' | 'solve';
-  onHelpClick?: () => void;
+  hasSolution?: boolean;
+  onReset?: () => void;
+  onSolve?: () => void;
   hasWhatsNew: boolean;
   isWhatsNewVisible: boolean;
 }
 
-function FileTab({ i18n, editorDocument, helpAction, onHelpClick, hasWhatsNew, isWhatsNewVisible }: FileTabProps) {
+function FileTab({ i18n, editorDocument, hasSolution, onReset, onSolve, hasWhatsNew, isWhatsNewVisible }: FileTabProps) {
   const filePath = editorDocument?.filePath;
   const fileName = filePath?.split('/').at(-1) ?? '';
   const icon = fileName ? getFileIcon(fileName) : '';
@@ -186,12 +190,16 @@ function FileTab({ i18n, editorDocument, helpAction, onHelpClick, hasWhatsNew, i
         <div className="i-ph-download-simple text-lg" />
         Download
       </button>
-      {!!helpAction && (
-        <button onClick={onHelpClick} disabled={!onHelpClick} className="panel-button px-2 py-0.5 -mr-1 -my-1">
-          {helpAction === 'solve' && <div className="i-ph-lightbulb-duotone text-lg" />}
-          {helpAction === 'solve' && i18n.solveButtonText}
-          {helpAction === 'reset' && <div className="i-ph-clock-counter-clockwise-duotone" />}
-          {helpAction === 'reset' && i18n.resetButtonText}
+      {!!onReset && (
+        <button onClick={onReset} className={`panel-button px-2 py-0.5 -my-1 ${hasSolution ? '' : '-mr-1'}`}>
+          <div className="i-ph-clock-counter-clockwise-duotone" />
+          {i18n.resetButtonText}
+        </button>
+      )}
+      {hasSolution && !!onSolve && (
+        <button onClick={onSolve} className="panel-button px-2 py-0.5 -mr-1 -my-1">
+          <div className="i-ph-lightbulb-duotone text-lg" />
+          {i18n.solveButtonText}
         </button>
       )}
     </div>
