@@ -1,4 +1,5 @@
 import { acceptCompletion, autocompletion, closeBrackets, startCompletion } from '@codemirror/autocomplete';
+import { tooltipContent, tooltipTheme } from './tooltip-content.js';
 import { typeScriptCompletion, typeScriptDefinition, typeScriptDiagnostics, typeScriptHover, typeScriptSignature, updateTypeScriptProject, workspaceKey } from './typescript-vfs.js';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { bracketMatching, foldGutter, indentOnInput, indentUnit } from '@codemirror/language';
@@ -29,6 +30,7 @@ import {
   lineMarks,
   markNewLines,
   newLineNumbers,
+  removedLines,
   revealLines,
   revealRequest,
   whatsNewFiles,
@@ -222,10 +224,13 @@ export function CodeMirrorEditor({
     }
 
     const previous = files.previous[current.filePath];
+    const previousText = typeof previous === 'string' ? previous : undefined;
+    const shown = view.state.doc.toString();
 
     markNewLines(
       view,
-      newLineNumbers(typeof previous === 'string' ? previous : undefined, starting, view.state.doc.toString()),
+      newLineNumbers(previousText, starting, shown),
+      removedLines(previousText, starting, shown),
     );
   }
 
@@ -344,11 +349,8 @@ function signatureHelp(projectRef: { current: any }, filePath: string) {
       const tooltip = !info ? null : {
         pos: update.view.state.selection.main.head,
         above: true,
-        create() {
-          const dom = document.createElement('pre');
-          dom.className = 'cm-tooltip cm-tooltip-hover';
-          dom.textContent = `${info.text}\n\nParameter ${info.activeParameter + 1}`;
-          return { dom };
+        create(view: EditorView) {
+          return { dom: tooltipContent(view, info.text, `Parameter ${info.activeParameter + 1}`) };
         },
       };
       update.view.dispatch({ effects: setSignatureTooltip.of(tooltip) });
@@ -385,6 +387,7 @@ function newEditorState(
           whiteSpace: 'pre-wrap',
           overflowWrap: 'anywhere',
         },
+        ...tooltipTheme,
       }),
       EditorView.domEventHandlers({
         scroll: debounce((_event, view) => {
@@ -396,7 +399,6 @@ function newEditorState(
           }
         },
       }),
-      lineMarks(),
       getTheme(theme, settings),
       history(),
       keymap.of([
@@ -412,6 +414,9 @@ function newEditorState(
       }),
       closeBrackets(),
       lineNumbers(),
+
+      // course patch: after the line numbers, so the "What's new" gutter sits between them and the code.
+      lineMarks(),
       scrollPastEnd(),
       dropCursor(),
       drawSelection(),

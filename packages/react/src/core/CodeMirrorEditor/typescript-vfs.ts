@@ -1,5 +1,6 @@
 import { createDefaultMapFromCDN, createSystem, createVirtualTypeScriptEnvironment } from '@typescript/vfs';
 import ts from 'typescript';
+import { tooltipContent } from './tooltip-content.js';
 
 let libraries: Promise<Map<string, string>> | undefined;
 let clearedLegacyLibraryCache = false;
@@ -146,11 +147,10 @@ export function typeScriptHover(projectRef: { current: any }, filePath: string) 
         pos: info.textSpan.start,
         end: info.textSpan.start + info.textSpan.length,
         above: true,
-        create() {
-          const dom = document.createElement('pre');
-          dom.className = 'cm-tooltip cm-tooltip-hover';
-          dom.textContent = `${ts.displayPartsToString(info.displayParts)}${info.documentation?.length ? `\n\n${ts.displayPartsToString(info.documentation)}` : ''}`;
-          return { dom };
+        create(view: any) {
+          // course patch: the type is highlighted like the editor, and its documentation reads as prose under it.
+          const documentation = ts.displayPartsToString(info.documentation ?? []);
+          return { dom: tooltipContent(view, ts.displayPartsToString(info.displayParts), documentation || undefined) };
         },
       };
     } catch { return null; }

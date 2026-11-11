@@ -206,24 +206,24 @@ function File({ file: { depth, name }, onClick, selected, marked }: FileProps) {
       })}
       onClick={onClick}
       aria-pressed={selected}
+      marker={
+        marked && (
+          <span
+            className="tk-file-changed-dot"
+            title="New or changed in this lesson"
+            aria-label="New or changed in this lesson"
+            style={{
+              flexShrink: 0,
+              width: '0.4rem',
+              height: '0.4rem',
+              borderRadius: '999px',
+              background: '#22c55e',
+            }}
+          />
+        )
+      }
     >
       {name}
-      {marked && (
-        <span
-          className="tk-file-changed-dot"
-          title="New or changed in this lesson"
-          aria-label="New or changed in this lesson"
-          style={{
-            display: 'inline-block',
-            width: '0.4rem',
-            height: '0.4rem',
-            marginLeft: '0.4rem',
-            borderRadius: '999px',
-            background: '#22c55e',
-            verticalAlign: 'middle',
-          }}
-        />
-      )}
     </NodeButton>
   );
 }
@@ -235,9 +235,20 @@ interface ButtonProps {
   className?: string;
   onClick?: () => void;
   'aria-pressed'?: boolean;
+
+  /** course patch: drawn after the name, which shortens with an ellipsis so the marker stays on its line. */
+  marker?: ReactNode;
 }
 
-function NodeButton({ depth, iconClasses, onClick, className, 'aria-pressed': ariaPressed, children }: ButtonProps) {
+function NodeButton({
+  depth,
+  iconClasses,
+  onClick,
+  className,
+  'aria-pressed': ariaPressed,
+  marker,
+  children,
+}: ButtonProps) {
   return (
     <button
       className={`flex items-center gap-2 w-full pr-2 border-2 border-transparent text-faded ${className ?? ''}`}
@@ -246,7 +257,10 @@ function NodeButton({ depth, iconClasses, onClick, className, 'aria-pressed': ar
       aria-pressed={ariaPressed === true ? 'true' : undefined}
     >
       <div className={classNames('scale-120 shrink-0', iconClasses)}></div>
-      <span>{children}</span>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {children}
+      </span>
+      {marker}
     </button>
   );
 }
